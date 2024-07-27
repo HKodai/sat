@@ -8,48 +8,75 @@
 #include <vector>
 using namespace std;
 
-bool conflict_clause(vector<int> &clause, vector<int> &allocation) {
-    // clauseが矛盾していればtrue, していなければfalseを返す
-    // allocation: 各変数について、真なら1, 偽なら-1, 未割り当てなら0
-    for (int v : clause) {
-        // いずれかの変数が矛盾していないならばclauseも矛盾していない
-        if (v * allocation[abs(v)] >= 0) return false;
+bool unit_propagation(vector<vector<int>> &formula, set<int> &unassigned,
+                      unordered_set<int> &assigned,
+                      unordered_set<int> &new_assigned) {
+    bool updated;
+    do {
+        updated = false;
+        for (vector<int> &c : formula) {
+            int conflict_count = 0;
+            int unit = 0;
+            for (int v : c) {
+                if (assigned.count(-v) || new_assigned.count(-v)) {
+                    conflict_count++;
+                } else if (!(assigned.count(v) || new_assigned.count(v))) {
+                    unit = v;
+                }
+            }
+            if (conflict_count == c.size()) return false;
+            if (conflict_count == c.size() - 1 && unit != 0) {
+                new_assigned.insert(unit);
+                updated = true;
+            }
+        }
+    } while (updated);
+    for (int u : new_assigned) {
+        unassigned.erase(abs(u));
+        assigned.insert(u);
     }
     return true;
 }
 
-bool conflict_formula(vector<vector<int>> &formula, vector<int> &allocation) {
-    // formulaが矛盾していればtrue, していなければfalseを返す
-    for (vector<int> &c : formula) {
-        // いずれかのclauseが矛盾していればformulaも矛盾している
-        if (conflict_clause(c, allocation)) return true;
-    }
-    return false;
-}
-
 bool solve(vector<vector<int>> &formula, set<int> &unassigned,
            unordered_set<int> &assigned, int variables) {
+    unordered_set<int> new_assigned;
     // unit propagationを行う
     // この時点で矛盾していればバックトラック
-    if (conflict_formula(formula, allocation)) return false;
-    // 矛盾せず葉まで到達していれば充足可能
-    if (depth == variables) {
+    if (!unit_propagation(formula, unassigned, assigned, new_assigned))
+        return false;
+    // 矛盾せず全ての変数が割り当てられていれば充足可能
+    if (assigned.size() == variables) {
         cout << "SAT" << endl;
-        for (int i = 1; i <= variables; i++) {
-            cout << i * allocation[i] << ' ';
+        vector<int> solution;
+        for (auto v : assigned) {
+            solution.push_back(v);
+        }
+        sort(solution.begin(), solution.end(),
+             [](int a, int b) { return abs(a) < abs(b); });
+        for (auto v : solution) {
+            cout << v << ' ';
         }
         cout << endl;
         return true;
     }
     // 変数番号の昇順に変数を選択
-    int variable = depth + 1;
+    int variable = *unassigned.begin();
+    unassigned.erase(variable);
     // 真偽値を割り当て、再帰的に探索
-    allocation[variable] = 1;
-    if (solve(formula, allocation, depth + 1, variables)) return true;
-    allocation[variable] = -1;
-    if (solve(formula, allocation, depth + 1, variables)) return true;
+    assigned.insert(variable);
+    if (solve(formula, unassigned, assigned, variables)) return true;
+    assigned.erase(variable);
+    assigned.insert(-variable);
+    if (solve(formula, unassigned, assigned, variables)) return true;
     // どう割り当てても矛盾するならば、選択した変数を未割り当てに戻してバックトラック
-    allocation[variable] = 0;
+    assigned.erase(-variable);
+    unassigned.insert(variable);
+    // unit_propagationによる割り当ても取り消す
+    for (int v : new_assigned) {
+        assigned.erase(v);
+        unassigned.insert(abs(v));
+    }
     return false;
 }
 
@@ -89,8 +116,12 @@ int main(int argc, char *argv[]) {
              });
              return abs(max_a) < abs(max_b);
          });
-    vector<int> allocation(variables + 1, 0);
-    if (!solve(formula, allocation, 0, variables)) {
+    set<int> unassigned;
+    for (int i = 1; i <= variables; i++) {
+        unassigned.insert(i);
+    }
+    unordered_set<int> assigned;
+    if (!solve(formula, unassigned, assigned, variables)) {
         cout << "UNSAT" << endl;
     }
     auto end = chrono::system_clock::now();
