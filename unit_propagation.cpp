@@ -4,13 +4,12 @@
 #include <iostream>
 #include <set>
 #include <sstream>
-#include <unordered_set>
 #include <vector>
 using namespace std;
 
 bool unit_propagation(vector<vector<int>> &formula, set<int> &unassigned,
-                      unordered_set<int> &assigned,
-                      unordered_set<int> &new_assigned) {
+                      vector<int> &assigned, vector<int> &new_assigned,
+                      int variables) {
     bool updated;
     do {
         updated = false;
@@ -18,44 +17,42 @@ bool unit_propagation(vector<vector<int>> &formula, set<int> &unassigned,
             int conflict_count = 0;
             int unit = 0;
             for (int v : c) {
-                if (assigned.count(-v) || new_assigned.count(-v)) {
+                if (assigned[abs(v)] == -v || new_assigned[abs(v)] == -v) {
                     conflict_count++;
-                } else if (!(assigned.count(v) || new_assigned.count(v))) {
+                } else if (!(assigned[abs(v)] == v ||
+                             new_assigned[abs(v)] == v)) {
                     unit = v;
                 }
             }
             if (conflict_count == c.size()) return false;
             if (conflict_count == c.size() - 1 && unit != 0) {
-                new_assigned.insert(unit);
+                new_assigned[abs(unit)] = unit;
                 updated = true;
             }
         }
     } while (updated);
-    for (int u : new_assigned) {
-        unassigned.erase(abs(u));
-        assigned.insert(u);
+    for (int i = 1; i <= variables; i++) {
+        if (new_assigned[i] != 0) {
+            unassigned.erase(i);
+            assigned[i] = new_assigned[i];
+        }
     }
     return true;
 }
 
 bool solve(vector<vector<int>> &formula, set<int> &unassigned,
-           unordered_set<int> &assigned, int variables) {
-    unordered_set<int> new_assigned;
+           vector<int> &assigned, int variables) {
+    vector<int> new_assigned(variables + 1, 0);
     // unit propagationを行う
     // この時点で矛盾していればバックトラック
-    if (!unit_propagation(formula, unassigned, assigned, new_assigned))
+    if (!unit_propagation(formula, unassigned, assigned, new_assigned,
+                          variables))
         return false;
     // 矛盾せず全ての変数が割り当てられていれば充足可能
-    if (assigned.size() == variables) {
+    if (unassigned.size() == 0) {
         cout << "SAT" << endl;
-        vector<int> solution;
-        for (auto v : assigned) {
-            solution.push_back(v);
-        }
-        sort(solution.begin(), solution.end(),
-             [](int a, int b) { return abs(a) < abs(b); });
-        for (auto v : solution) {
-            cout << v << ' ';
+        for (int i = 1; i <= variables; i++) {
+            cout << assigned[i] << ' ';
         }
         cout << endl;
         return true;
@@ -64,18 +61,19 @@ bool solve(vector<vector<int>> &formula, set<int> &unassigned,
     int variable = *unassigned.begin();
     unassigned.erase(variable);
     // 真偽値を割り当て、再帰的に探索
-    assigned.insert(variable);
+    assigned[variable] = variable;
     if (solve(formula, unassigned, assigned, variables)) return true;
-    assigned.erase(variable);
-    assigned.insert(-variable);
+    assigned[variable] = -variable;
     if (solve(formula, unassigned, assigned, variables)) return true;
     // どう割り当てても矛盾するならば、選択した変数を未割り当てに戻してバックトラック
-    assigned.erase(-variable);
+    assigned[variable] = 0;
     unassigned.insert(variable);
     // unit_propagationによる割り当ても取り消す
-    for (int v : new_assigned) {
-        assigned.erase(v);
-        unassigned.insert(abs(v));
+    for (int i = 1; i <= variables; i++) {
+        if (new_assigned[i] != 0) {
+            assigned[i] = 0;
+            unassigned.insert(i);
+        }
     }
     return false;
 }
@@ -120,7 +118,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i <= variables; i++) {
         unassigned.insert(i);
     }
-    unordered_set<int> assigned;
+    vector<int> assigned(variables + 1, 0);
     if (!solve(formula, unassigned, assigned, variables)) {
         cout << "UNSAT" << endl;
     }
